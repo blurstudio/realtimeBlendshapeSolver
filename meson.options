@@ -1,0 +1,3 @@
+option('tflite', type : 'combo', choices : ['source', 'prebuilt'], value : 'source',
+  description : 'source: build tensorflowlite_c from the tensorflow-lite subproject. ' +
+                'prebuilt: use libLiteRt.dll from scripts/fetch_dependencies.py')

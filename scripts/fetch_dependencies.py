@@ -99,9 +99,12 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument("--litert-version", default=LITERT_VERSION)
     p.add_argument("--force", action="store_true", help="re-download existing files")
+    p.add_argument("--model-only", action="store_true",
+                   help="skip libLiteRt (not needed when building with -Dtflite=source)")
     args = p.parse_args()
     fetch_model(args.force)
-    fetch_litert(args.litert_version, args.force)
+    if not args.model_only:
+        fetch_litert(args.litert_version, args.force)
 
 
 if __name__ == "__main__":

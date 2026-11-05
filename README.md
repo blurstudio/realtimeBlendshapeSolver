@@ -7,22 +7,66 @@ API.
 
 ## Getting the dependencies
 
-You need two files that are not in this repo:
+You need two runtime files that are not in this repo:
 
 | File | What it is | Where it comes from |
 | --- | --- | --- |
 | `face_blendshapes.tflite` | The blendshape model, about 1 MB | Inside MediaPipe's `face_landmarker.task` bundle |
-| `libLiteRt.dll` | The TensorFlow Lite runtime (LiteRT), which exports the TFLite C API | Inside Google's `ai-edge-litert` Python wheel |
+| The TFLite C library | The TensorFlow Lite runtime | Either built from source by meson (the default), or Google's prebuilt `libLiteRt.dll` |
 
-To fetch both, run:
+The meson option `tflite` chooses where the library comes from:
 
-```
-python -I scripts/fetch_dependencies.py
-```
+- **`source` (default):** builds `tensorflowlite_c.dll` from the
+  `tensorflow-lite` subproject. You only need to fetch the model:
+  `python -I scripts/fetch_dependencies.py --model-only`
+- **`prebuilt`:** uses Google's `libLiteRt.dll`. Fetch it along with the
+  model: `python -I scripts/fetch_dependencies.py`
 
-This puts them in `thirdparty/`, along with `canonical_face_model.obj`, which
-the test uses. Nothing it downloads is installed or executed. You can also get
-the files by hand.
+The fetch script puts files in `thirdparty/`, along with
+`canonical_face_model.obj`, which the test uses. Nothing it downloads is
+installed or executed. You can also get the files by hand.
+
+### Building TFLite from source (`-Dtflite=source`)
+
+[subprojects/tensorflow-lite.wrap](subprojects/tensorflow-lite.wrap) pins the
+TensorFlow 2.21.0 source tarball. On top of it, meson lays down three files
+from [subprojects/packagefiles/tensorflow-lite/](subprojects/packagefiles/tensorflow-lite/):
+
+- `meson.build` and `meson.options` run TFLite's own CMake build of
+  `tensorflow/lite/c`. CMake itself downloads TFLite's dependencies (abseil,
+  eigen, flatbuffers, ...).
+- `build_tflite.py` runs the CMake configure and build steps and copies the
+  library into meson's build dir.
+
+Meson also applies `tensorflow-lite-windows.patch`, which fixes two
+problems in 2.21.0 on Windows:
+
+- MSVC fails to compile `core/model_building.h` because of an undeclared
+  friend class.
+- A static-build define reaches `tensorflowlite_c.dll` and leaves it with no
+  exports.
+
+Things to know about the source build:
+
+- **Requirements:** CMake 3.16 or newer and network access. The first build
+  downloads about 90 MB of TensorFlow source plus the CMake dependencies, and
+  takes a while.
+- **Incremental builds:** later builds reuse the CMake build dir.
+- **Subproject options:** these have the `tensorflow-lite:` prefix, for
+  example `-Dtensorflow-lite:xnnpack=true`.
+  - `xnnpack`: adds the XNNPACK CPU delegate. It's off by default because it
+    makes the build much longer, and this model is too small to benefit.
+  - `cmake_build_dir`: runs the CMake build somewhere with a shorter path,
+    such as `C:/tflb`, if you hit Windows path-length errors.
+  - `cmake_generator`, `cmake_args`: passed straight to CMake.
+- **The library is always built Release.** It only exposes a C API, so it
+  doesn't need to match the plugin's debug/release CRT.
+- **`CERTIFICATE_VERIFY_FAILED` when meson downloads the tarball:** this
+  happens when Windows hasn't fetched the root certificate that
+  `codeload.github.com` uses, because Python only sees roots already in the
+  store. You can download the tarball with a browser or `curl` and put it in
+  `subprojects/packagecache/tensorflow-2.21.0.tar.gz`. Meson checks its
+  SHA-256 and uses it.
 
 ### Getting the model by hand
 
@@ -62,9 +106,12 @@ meson install -C build
 meson test -C build   # standalone model test, no Maya needed
 ```
 
-`meson install` copies the plugin into `output_Maya<version>/`. If the model
-and library are present in `thirdparty/`, it copies them next to the plugin
-too.
+To use the prebuilt library instead, add `-Dtflite=prebuilt` to
+`meson setup`.
+
+`meson install` copies the plugin into `output_Maya<version>/`. It also copies
+the TFLite library and, if it's present in `thirdparty/`, the model next to
+the plugin.
 
 ## Runtime lookup
 

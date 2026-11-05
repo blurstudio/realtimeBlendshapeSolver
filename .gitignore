@@ -3,3 +3,5 @@
 /output_Maya*/
 /subprojects/maya/
 /src/version.h
+/subprojects/tensorflow-*/
+/subprojects/packagecache/

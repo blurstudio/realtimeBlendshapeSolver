@@ -1,4 +1,8 @@
-project('MayaTfLiteArkitSolver', 'cpp', default_options : ['cpp_std=c++17'])
+project(
+  'MayaTfLiteArkitSolver', 'cpp',
+  default_options : ['cpp_std=c++17'],
+  meson_version : '>=1.1',
+)
 
 maya_dep = dependency('maya')
 maya_gl_dep = dependency('maya-opengl')
@@ -48,26 +52,41 @@ outlib = shared_library(
   name_suffix : maya_name_suffix,
 )
 
-# Runtime files from scripts/fetch_dependencies.py are installed next to the
-# plugin, which is where it looks for them by default.
+# Runtime files are installed next to the plugin, which is where it looks for
+# them by default.
 model_file = 'thirdparty/model/face_blendshapes.tflite'
 obj_file = 'thirdparty/model/canonical_face_model.obj'
-litert_lib = ''
-foreach name : ['libLiteRt.dll', 'libLiteRt.so', 'libLiteRt.dylib']
-  if litert_lib == '' and fs.is_file('thirdparty/litert' / name)
-    litert_lib = 'thirdparty/litert' / name
-  endif
-endforeach
 
 if fs.is_file(model_file)
   install_data(model_file, install_dir : install_dir)
 else
   warning('Model not found. Run: python -I scripts/fetch_dependencies.py')
 endif
-if litert_lib != ''
-  install_data(litert_lib, install_dir : install_dir)
+
+# The TFLite C library. `tflite_lib` is a path or a build target, for the test.
+tflite_lib = ''
+have_tflite_lib = false
+if get_option('tflite') == 'source'
+  # Downloads tensorflow (subprojects/tensorflow-lite.wrap) and builds
+  # tensorflowlite_c with CMake. The first build takes a while.
+  tflite_proj = subproject(
+    'tensorflow-lite',
+    default_options : ['lib_install_dir=' + install_dir],
+  )
+  tflite_lib = tflite_proj.get_variable('tflite_c_lib')
+  have_tflite_lib = true
 else
-  warning('LiteRT library not found. Run: python -I scripts/fetch_dependencies.py')
+  foreach name : ['libLiteRt.dll', 'libLiteRt.so', 'libLiteRt.dylib']
+    if tflite_lib == '' and fs.is_file('thirdparty/litert' / name)
+      tflite_lib = meson.global_source_root() / 'thirdparty/litert' / name
+    endif
+  endforeach
+  have_tflite_lib = tflite_lib != ''
+  if have_tflite_lib
+    install_data(tflite_lib, install_dir : install_dir)
+  else
+    warning('LiteRT library not found. Run: python -I scripts/fetch_dependencies.py')
+  endif
 endif
 
 # Standalone (no Maya) check of the TFLite binding and model conventions.
@@ -79,9 +98,9 @@ solver_test = executable(
   dependencies : [dl_dep],
   build_by_default : false,
 )
-if litert_lib != '' and fs.is_file(model_file) and fs.is_file(obj_file)
+if have_tflite_lib and fs.is_file(model_file) and fs.is_file(obj_file)
   test('faceBlendshapes', solver_test, args : [
-    meson.global_source_root() / litert_lib,
+    tflite_lib,
     meson.global_source_root() / model_file,
     meson.global_source_root() / obj_file,
   ])

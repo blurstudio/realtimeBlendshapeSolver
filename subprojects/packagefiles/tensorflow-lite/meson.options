@@ -1,0 +1,10 @@
+option('xnnpack', type : 'boolean', value : false,
+  description : 'Build the XNNPACK CPU delegate. Much longer build; the blendshape model is too small to benefit.')
+option('cmake_build_dir', type : 'string', value : '',
+  description : 'Where to run the CMake build. Empty means inside the meson build dir. Set a short path (e.g. C:/tflb) if Windows path-length limits bite.')
+option('cmake_generator', type : 'string', value : '',
+  description : 'CMake generator to use. Empty means CMake\'s default.')
+option('cmake_args', type : 'array', value : [],
+  description : 'Extra arguments passed to the TFLite CMake configure step.')
+option('lib_install_dir', type : 'string', value : '',
+  description : 'Install the built library here. Empty means do not install.')
