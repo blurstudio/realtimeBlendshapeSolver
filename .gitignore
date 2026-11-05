@@ -1,0 +1,5 @@
+/thirdparty/
+/mayabuild_*/
+/output_Maya*/
+/subprojects/maya/
+/src/version.h
