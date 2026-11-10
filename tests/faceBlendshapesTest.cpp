@@ -1,13 +1,12 @@
-// Standalone (no Maya) check that the TFLite library loads, the model runs,
-// and the input conventions are right.
+// Standalone (no Maya) check that the model runs, matches TensorFlow Lite, and
+// the input conventions are right.
 //
-// Usage: faceBlendshapesTest <tflite library> <face_blendshapes.tflite> <canonical_face_model.obj>
+// Usage: faceBlendshapesTest <face_blendshapes.tflite> <canonical_face_model.obj>
 //
 // MediaPipe's canonical_face_model.obj only has 468 vertices, so this also
 // covers the no-iris path: fbs::synthesizeIris fills in the 10 iris landmarks.
 
 #include "faceBlendshapes.h"
-#include "tfliteRuntime.h"
 
 #include <array>
 #include <cmath>
@@ -24,6 +23,26 @@ struct V3 {
 };
 
 int g_failures = 0;
+
+// TensorFlow Lite 2.22 (LiteRt 2.3.0) scores for the canonical face with
+// synthesized irises, i.e. solve(model, mesh) below.
+// clang-format off
+const float kTfLiteCanonicalScores[fbs::kNumBlendshapes] = {
+    0.0000052f, 0.3392323f, 0.2780324f, 0.0160076f,
+    0.0033426f, 0.0025734f, 0.0000673f, 0.0000002f,
+    0.0000003f, 0.4309839f, 0.3951717f, 0.1873899f,
+    0.2031238f, 0.0322983f, 0.1399942f, 0.1395191f,
+    0.0328343f, 0.0483988f, 0.0530597f, 0.2427855f,
+    0.1895487f, 0.0013256f, 0.0006257f, 0.0000617f,
+    0.0019357f, 0.0757132f, 0.0001366f, 0.0166299f,
+    0.0328260f, 0.0292926f, 0.0000162f, 0.0000218f,
+    0.0033500f, 0.0026560f, 0.0014063f, 0.0014451f,
+    0.1493420f, 0.1478278f, 0.0096107f, 0.0013651f,
+    0.1527375f, 0.0730304f, 0.0415678f, 0.0492742f,
+    0.0013531f, 0.0016791f, 0.0001054f, 0.0004019f,
+    0.0032066f, 0.0040961f, 0.0000004f, 0.0000005f,
+};
+// clang-format on
 
 void check(bool ok, const char *what)
 {
@@ -82,25 +101,23 @@ std::vector<V3> squashEye(std::vector<V3> v, const std::vector<int> &ids, int co
 
 int main(int argc, char **argv)
 {
-    if (argc < 4) {
-        std::printf("usage: %s <tflite library> <model.tflite> <canonical_face_model.obj>\n", argv[0]);
+    if (argc < 3) {
+        std::printf("usage: %s <model.tflite> <canonical_face_model.obj>\n", argv[0]);
         return 2;
     }
 
-    std::string loadedFrom, err;
-    if (!tfl::loadLibrary({argv[1]}, loadedFrom, err)) {
-        std::printf("could not load library:%s\n", err.c_str());
-        return 1;
-    }
-    std::printf("TFLite %s from %s\n", tfl::api()->TfLiteVersion(), loadedFrom.c_str());
-
+    std::string err;
     fbs::BlendshapeModel model;
-    if (!model.load(argv[2], err)) {
+    if (!model.load(argv[1], err)) {
         std::printf("could not load model: %s\n", err.c_str());
         return 1;
     }
 
-    const std::vector<V3> v = readObj(argv[3]);
+    fbs::BlendshapeModel notAModel;
+    check(!notAModel.load(argv[2], err) && !notAModel.isLoaded(), "a non-model file fails to load");
+    std::printf("  %s\n", err.c_str());
+
+    const std::vector<V3> v = readObj(argv[2]);
     check(v.size() == fbs::kNumFaceLandmarks, "mesh has 468 landmarks (no iris)");
     if (v.size() != fbs::kNumFaceLandmarks) return 1;
 
@@ -108,6 +125,12 @@ int main(int argc, char **argv)
     bool inRange = true;
     for (float s : base) inRange &= (s >= 0.0f && s <= 1.0f);
     check(inRange, "scores are in [0, 1]");
+
+    double tfliteDiff = 0;
+    for (int i = 0; i < fbs::kNumBlendshapes; ++i)
+        tfliteDiff = std::fmax(tfliteDiff, std::fabs(base[i] - kTfLiteCanonicalScores[i]));
+    std::printf("  largest difference from TensorFlow Lite: %.2g\n", tfliteDiff);
+    check(tfliteDiff < 1e-4, "scores match TensorFlow Lite");
 
     const auto moved = solve(model, v, 37.0, 250.0);
     double maxDiff = 0;
@@ -162,7 +185,6 @@ int main(int argc, char **argv)
     check(mirrorOk && pairs == 40, "left/right swap table is consistent");
 
     model.unload();
-    tfl::unloadLibrary();
     std::printf("%s\n", g_failures ? "FAILED" : "ALL PASSED");
     return g_failures ? 1 : 0;
 }

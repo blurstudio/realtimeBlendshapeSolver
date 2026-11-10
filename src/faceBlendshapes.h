@@ -13,12 +13,8 @@
 // *Left / *Right refer to the subject's left and right, not the viewer's.
 
 #include <array>
+#include <memory>
 #include <string>
-
-namespace tfl {
-struct TfLiteModel;
-struct TfLiteInterpreter;
-} // namespace tfl
 
 namespace fbs {
 
@@ -38,27 +34,29 @@ extern const std::array<const char *, kNumBlendshapes> kBlendshapeNames;
 // vice versa, or i itself for unpaired shapes (jawOpen, browInnerUp, ...).
 extern const std::array<int, kNumBlendshapes> kMirroredBlendshape;
 
+// Runs the model with the built-in implementation in blendshapeModel.cpp.
+// TensorFlow Lite is not used.
 class BlendshapeModel {
   public:
-    BlendshapeModel() = default;
+    BlendshapeModel();
     ~BlendshapeModel();
     BlendshapeModel(const BlendshapeModel &) = delete;
     BlendshapeModel &operator=(const BlendshapeModel &) = delete;
 
-    // Requires tfl::loadLibrary to have succeeded. Validates tensor shapes.
+    // Reads the weights and checks the graph is the expected one.
     bool load(const std::string &modelPath, std::string &error);
     void unload();
-    bool isLoaded() const { return m_interpreter != nullptr; }
+    bool isLoaded() const { return m_weights != nullptr; }
     const std::string &path() const { return m_path; }
 
     // xy: kNumSubset * 2 floats. scores: kNumBlendshapes floats.
-    bool run(const float *xy, float *scores, std::string &error);
+    bool run(const float *xy, float *scores, std::string &error) const;
+
+    struct Weights;
 
   private:
-    tfl::TfLiteModel *m_model = nullptr;
-    tfl::TfLiteInterpreter *m_interpreter = nullptr;
+    std::unique_ptr<const Weights> m_weights;
     std::string m_path;
-    std::string m_lastTfError;
 };
 
 } // namespace fbs

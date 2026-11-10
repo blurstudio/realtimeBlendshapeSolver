@@ -17,7 +17,7 @@ if not exist %BUILDDIR%\ (
 
 if exist %BUILDDIR%\ (
     meson compile -C %BUILDDIR%
-    meson install -C %BUILDDIR%
+    meson install --skip-subprojects -C %BUILDDIR%
 )
 
 pause

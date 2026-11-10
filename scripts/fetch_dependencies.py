@@ -5,18 +5,13 @@
 Fetches:
   thirdparty/model/face_blendshapes.tflite   extracted from MediaPipe's face_landmarker.task
   thirdparty/model/canonical_face_model.obj  MediaPipe canonical face (468 verts), for the test
-  thirdparty/litert/libLiteRt.dll            TFLite C API, extracted from Google's
-                                             ai-edge-litert wheel (.so / .dylib elsewhere)
 
-Only the Python standard library and pip are used. Nothing downloaded is executed.
+Nothing downloaded is executed.
 """
 
 import argparse
-import glob
 import os
 import shutil
-import subprocess
-import sys
 import tempfile
 import urllib.request
 import zipfile
@@ -35,7 +30,6 @@ OBJ_URL = (
     "https://raw.githubusercontent.com/google-ai-edge/mediapipe/master/"
     "mediapipe/modules/face_geometry/data/canonical_face_model.obj"
 )
-LITERT_VERSION = "2.3.0"
 
 
 def download(url, dest):
@@ -64,70 +58,13 @@ def fetch_model(force):
     print("obj:  ", obj)
 
 
-def fetch_litert(version, force):
-    out_dir = os.path.join(THIRDPARTY, "litert")
-    os.makedirs(out_dir, exist_ok=True)
-    existing = glob.glob(os.path.join(out_dir, "libLiteRt.*"))
-    if existing and not force:
-        print("lib:  ", existing[0])
-        return
-
-    with tempfile.TemporaryDirectory() as tmp:
-        # Download only; the wheel is never installed or imported.
-        subprocess.check_call(
-            [
-                sys.executable,
-                "-m",
-                "pip",
-                "download",
-                "ai-edge-litert==" + version,
-                "--no-deps",
-                "--only-binary=:all:",
-                "-d",
-                tmp,
-            ]
-        )
-        wheels = glob.glob(os.path.join(tmp, "*.whl"))
-        if not wheels:
-            sys.exit("pip did not download an ai-edge-litert wheel for this platform")
-        with zipfile.ZipFile(wheels[0]) as z:
-            names = z.namelist()
-            libs = [
-                n
-                for n in names
-                if os.path.basename(n).split(".")[0] == "libLiteRt"
-                and n.rsplit(".", 1)[-1] in ("dll", "so", "dylib")
-            ]
-            if not libs:
-                shared = [n for n in names if n.endswith((".dll", ".so", ".dylib"))]
-                shline = "\n ".join(shared)
-                sys.exit(
-                    f"libLiteRt not found in {os.path.basename(wheels[0])}. Shared libraries in the wheel:\n  {shline}"
-                )
-            for n in libs + [
-                n for n in names if "/licenses/" in n or n.endswith("LICENSE")
-            ]:
-                dest = os.path.join(out_dir, os.path.basename(n))
-                with open(dest, "wb") as f:
-                    f.write(z.read(n))
-                print("lib:  ", dest)
-
-
 def main():
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
-    p.add_argument("--litert-version", default=LITERT_VERSION)
     p.add_argument("--force", action="store_true", help="re-download existing files")
-    p.add_argument(
-        "--model-only",
-        action="store_true",
-        help="skip libLiteRt (not needed when building with -Dtflite=source)",
-    )
     args = p.parse_args()
     fetch_model(args.force)
-    if not args.model_only:
-        fetch_litert(args.litert_version, args.force)
 
 
 if __name__ == "__main__":

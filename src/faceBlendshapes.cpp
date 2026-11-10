@@ -1,8 +1,6 @@
 #include "faceBlendshapes.h"
-#include "tfliteRuntime.h"
 
 #include <cmath>
-#include <cstdio>
 
 namespace fbs {
 
@@ -124,105 +122,6 @@ void synthesizeIris(float *xy)
             out[2 * k + 1] = iris[k][1];
         }
     }
-}
-
-namespace {
-
-void captureError(void *userData, const char *format, va_list args)
-{
-    char buf[1024];
-    std::vsnprintf(buf, sizeof(buf), format, args);
-    *static_cast<std::string *>(userData) = buf;
-}
-
-} // namespace
-
-BlendshapeModel::~BlendshapeModel() { unload(); }
-
-void BlendshapeModel::unload()
-{
-    const tfl::Api *a = tfl::api();
-    if (a) {
-        if (m_interpreter) a->TfLiteInterpreterDelete(m_interpreter);
-        if (m_model) a->TfLiteModelDelete(m_model);
-    }
-    m_interpreter = nullptr;
-    m_model = nullptr;
-    m_path.clear();
-}
-
-bool BlendshapeModel::load(const std::string &modelPath, std::string &error)
-{
-    unload();
-    const tfl::Api *a = tfl::api();
-    if (!a) {
-        error = "TensorFlow Lite library is not loaded";
-        return false;
-    }
-
-    m_model = a->TfLiteModelCreateFromFile(modelPath.c_str());
-    if (!m_model) {
-        error = "Could not read TFLite model: " + modelPath;
-        return false;
-    }
-
-    tfl::TfLiteInterpreterOptions *opts = a->TfLiteInterpreterOptionsCreate();
-    // The model is tiny (~1 MB MLP-Mixer). One thread avoids fighting Maya's
-    // parallel evaluation for cores.
-    a->TfLiteInterpreterOptionsSetNumThreads(opts, 1);
-    a->TfLiteInterpreterOptionsSetErrorReporter(opts, captureError, &m_lastTfError);
-    m_interpreter = a->TfLiteInterpreterCreate(m_model, opts);
-    a->TfLiteInterpreterOptionsDelete(opts);
-
-    auto fail = [&](const std::string &msg) {
-        error = msg + (m_lastTfError.empty() ? "" : (": " + m_lastTfError));
-        unload();
-        return false;
-    };
-
-    if (!m_interpreter) return fail("Could not create TFLite interpreter for " + modelPath);
-    if (a->TfLiteInterpreterAllocateTensors(m_interpreter) != tfl::kTfLiteOk)
-        return fail("Could not allocate TFLite tensors");
-
-    if (a->TfLiteInterpreterGetInputTensorCount(m_interpreter) != 1 ||
-        a->TfLiteInterpreterGetOutputTensorCount(m_interpreter) != 1)
-        return fail("Unexpected tensor count; is this face_blendshapes.tflite?");
-
-    const tfl::TfLiteTensor *in = a->TfLiteInterpreterGetInputTensor(m_interpreter, 0);
-    const tfl::TfLiteTensor *out = a->TfLiteInterpreterGetOutputTensor(m_interpreter, 0);
-    const bool inOk = a->TfLiteTensorType(in) == tfl::kTfLiteFloat32 &&
-                      a->TfLiteTensorByteSize(in) == sizeof(float) * kNumSubset * 2;
-    const bool outOk = a->TfLiteTensorType(out) == tfl::kTfLiteFloat32 &&
-                       a->TfLiteTensorByteSize(out) == sizeof(float) * kNumBlendshapes;
-    if (!inOk || !outOk)
-        return fail("Unexpected tensor shapes; expected float32 [1,146,2] -> [52]. "
-                    "Is this face_blendshapes.tflite?");
-
-    m_path = modelPath;
-    return true;
-}
-
-bool BlendshapeModel::run(const float *xy, float *scores, std::string &error)
-{
-    const tfl::Api *a = tfl::api();
-    if (!a || !m_interpreter) {
-        error = "Model is not loaded";
-        return false;
-    }
-    m_lastTfError.clear();
-    tfl::TfLiteTensor *in = a->TfLiteInterpreterGetInputTensor(m_interpreter, 0);
-    if (a->TfLiteTensorCopyFromBuffer(in, xy, sizeof(float) * kNumSubset * 2) != tfl::kTfLiteOk ||
-        a->TfLiteInterpreterInvoke(m_interpreter) != tfl::kTfLiteOk) {
-        error = "TFLite inference failed: " + m_lastTfError;
-        return false;
-    }
-    const tfl::TfLiteTensor *out = a->TfLiteInterpreterGetOutputTensor(m_interpreter, 0);
-    if (a->TfLiteTensorCopyToBuffer(out, scores, sizeof(float) * kNumBlendshapes) !=
-        tfl::kTfLiteOk) {
-        error = "Could not read TFLite output: " + m_lastTfError;
-        return false;
-    }
-    return true;
 }
 
 } // namespace fbs
