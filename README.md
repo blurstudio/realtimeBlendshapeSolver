@@ -130,7 +130,7 @@ the plugin.
 
 | Plug | Type | Notes |
 | --- | --- | --- |
-| `inMesh` | mesh | Must have exactly 478 vertices in MediaPipe order: 468 face mesh vertices plus 10 iris vertices. The iris points are part of the model's input. |
+| `inMesh` | mesh | MediaPipe vertex order, with either 478 vertices (468 face mesh vertices plus 10 iris vertices) or 468 (no iris tracking). See [Meshes without irises](#meshes-without-irises). |
 | `modelPath` | string (file) | Path to `face_blendshapes.tflite`. Empty means next to the plugin. Set it again to retry after a failed load. |
 | `inputSpace` | enum | `yUp` (default): Maya / `canonical_face_model.obj` orientation. `mediaPipeImage`: raw MediaPipe landmarks (+Y down). |
 | `inputMatrix` | matrix | Applied to the points before they're projected onto XY. Connect a camera's `worldInverseMatrix` (together with the mesh's `worldMesh`) to solve from that camera's view. |
@@ -160,6 +160,42 @@ image space.
   footage.
 - **Head pose and depth:** these aren't outputs. The model doesn't use depth,
   and MediaPipe computes head pose separately.
+
+### Meshes without irises
+
+The model's input includes the 10 iris landmarks. For a 468-vertex mesh, the
+node synthesizes them from each eye's corners, looking straight ahead. This
+means:
+
+- **Gaze is not tracked.** `eyeLook*` stay near their resting values, at
+  most about 0.2 on the canonical face.
+- **Blink reads higher at rest.** The model partly judges `eyeBlink*` from
+  where the lids sit relative to the iris. On the canonical face it reads
+  about 0.4 with the eyes open, and closing one eye still clearly drives its
+  own `eyeBlink*`.
+
+## Verification mask
+
+[scripts/arkit_verification_mask.py](scripts/arkit_verification_mask.py)
+builds a mask that shows what the solved weights mean. It fits per-actor
+blendshapes from a calibration cache, then builds the canonical face (or any
+mesh in MediaPipe vertex order) with those shapes. The shapes go in a
+blendShape node that the solver drives.
+
+```python
+import arkit_verification_mask as avm
+avm.build_verification_mask('actorRest', 'calibrationCache')       # fit + build
+avm.key_head_follow('arkitMask_head', 'actorRest', 'otherShotCache')  # reuse on a shot
+```
+
+The fit removes head pose with a Procrustes fit on stable landmarks. It then
+solves `delta ≈ offset + Σ weight_k · shape_k` over all calibration frames by
+ridge least squares. A side penalty keeps `*Left` shapes off the right side of
+the face and the reverse, so pairs that usually fire together still come
+apart on a wink. The calibration should exercise every shape. The script lists
+the shapes it barely saw.
+
+Test it, without the solver plugin, using `mayapy tests/test_verification_mask.py`.
 
 ## Licenses
 

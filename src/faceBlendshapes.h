@@ -22,11 +22,17 @@ struct TfLiteInterpreter;
 
 namespace fbs {
 
-constexpr int kNumLandmarks = 478; // 468 face mesh + 10 iris
+constexpr int kNumLandmarks = 478;     // 468 face mesh + 10 iris
+constexpr int kNumFaceLandmarks = 468; // face mesh without iris refinement
 constexpr int kNumSubset = 146;
 constexpr int kNumBlendshapes = 52;
 
 extern const std::array<int, kNumSubset> kLandmarksSubset;
+
+// For meshes without iris refinement: fills the iris entries (landmarks 468-477)
+// of a kLandmarksSubset xy array, already in image space, from the eye corners.
+// The irises look straight ahead, so gaze is not tracked: eyeLook* stay near rest.
+void synthesizeIris(float *xy);
 extern const std::array<const char *, kNumBlendshapes> kBlendshapeNames;
 // kMirroredBlendshape[i] is the index of the *Right shape for a *Left shape and
 // vice versa, or i itself for unpaired shapes (jawOpen, browInnerUp, ...).

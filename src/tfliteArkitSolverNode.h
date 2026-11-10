@@ -14,7 +14,8 @@
 
 // Computes the 52 ARKit-style blendshape weights predicted by MediaPipe's
 // face_blendshapes.tflite from a mesh whose vertex order matches the MediaPipe
-// face mesh with iris refinement (478 vertices).
+// face mesh: 478 vertices with iris refinement, or 468 without, in which case the
+// irises are synthesized looking straight ahead.
 class TfliteArkitSolverNode : public MPxNode {
   public:
     static void *creator();

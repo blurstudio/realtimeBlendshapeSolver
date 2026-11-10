@@ -207,15 +207,16 @@ MStatus TfliteArkitSolverNode::compute(const MPlug &plug, MDataBlock &data)
         if (!status || pts == nullptr || numVerts == 0) {
             // Nothing connected yet; no need to complain.
         }
-        else if (numVerts != fbs::kNumLandmarks) {
+        else if (numVerts != fbs::kNumLandmarks && numVerts != fbs::kNumFaceLandmarks) {
             reportOnce(
                 "inMesh has " + std::to_string(numVerts) + " vertices; expected " +
-                std::to_string(fbs::kNumLandmarks) +
-                " (MediaPipe face mesh with iris refinement)"
+                std::to_string(fbs::kNumFaceLandmarks) + " (MediaPipe face mesh) or " +
+                std::to_string(fbs::kNumLandmarks) + " (with iris refinement)"
             );
         }
         else if (ensureModel(modelPath)) {
             for (int i = 0; i < fbs::kNumSubset; ++i) {
+                if (fbs::kLandmarksSubset[i] >= numVerts) continue; // iris, synthesized below
                 const float *p = pts + 3 * fbs::kLandmarksSubset[i];
                 double x = p[0], y = p[1];
                 if (!identity) {
@@ -227,6 +228,7 @@ MStatus TfliteArkitSolverNode::compute(const MPlug &plug, MDataBlock &data)
                 xy[2 * i] = static_cast<float>(x * sx);
                 xy[2 * i + 1] = static_cast<float>(y * sy);
             }
+            if (numVerts == fbs::kNumFaceLandmarks) fbs::synthesizeIris(xy.data());
             std::string err;
             valid = m_model.run(xy.data(), scores.data(), err);
             if (!valid) reportOnce(err);

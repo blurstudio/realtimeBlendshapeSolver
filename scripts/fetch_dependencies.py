@@ -20,6 +20,9 @@ import sys
 import tempfile
 import urllib.request
 import zipfile
+import ssl
+import certifi
+
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 THIRDPARTY = os.path.join(ROOT, "thirdparty")
@@ -37,7 +40,8 @@ LITERT_VERSION = "2.3.0"
 
 def download(url, dest):
     print("downloading", url)
-    with urllib.request.urlopen(url) as r, open(dest, "wb") as f:
+    context = ssl.create_default_context(cafile=certifi.where())
+    with urllib.request.urlopen(url, context=context) as r, open(dest, "wb") as f:
         shutil.copyfileobj(r, f)
 
 
@@ -70,25 +74,39 @@ def fetch_litert(version, force):
 
     with tempfile.TemporaryDirectory() as tmp:
         # Download only; the wheel is never installed or imported.
-        subprocess.check_call([
-            sys.executable, "-m", "pip", "download", "ai-edge-litert==" + version,
-            "--no-deps", "--only-binary=:all:", "-d", tmp,
-        ])
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "download",
+                "ai-edge-litert==" + version,
+                "--no-deps",
+                "--only-binary=:all:",
+                "-d",
+                tmp,
+            ]
+        )
         wheels = glob.glob(os.path.join(tmp, "*.whl"))
         if not wheels:
             sys.exit("pip did not download an ai-edge-litert wheel for this platform")
         with zipfile.ZipFile(wheels[0]) as z:
             names = z.namelist()
             libs = [
-                n for n in names
+                n
+                for n in names
                 if os.path.basename(n).split(".")[0] == "libLiteRt"
                 and n.rsplit(".", 1)[-1] in ("dll", "so", "dylib")
             ]
             if not libs:
                 shared = [n for n in names if n.endswith((".dll", ".so", ".dylib"))]
-                sys.exit("libLiteRt not found in %s. Shared libraries in the wheel:\n  %s"
-                         % (os.path.basename(wheels[0]), "\n  ".join(shared)))
-            for n in libs + [n for n in names if "/licenses/" in n or n.endswith("LICENSE")]:
+                shline = "\n ".join(shared)
+                sys.exit(
+                    f"libLiteRt not found in {os.path.basename(wheels[0])}. Shared libraries in the wheel:\n  {shline}"
+                )
+            for n in libs + [
+                n for n in names if "/licenses/" in n or n.endswith("LICENSE")
+            ]:
                 dest = os.path.join(out_dir, os.path.basename(n))
                 with open(dest, "wb") as f:
                     f.write(z.read(n))
@@ -96,11 +114,16 @@ def fetch_litert(version, force):
 
 
 def main():
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
     p.add_argument("--litert-version", default=LITERT_VERSION)
     p.add_argument("--force", action="store_true", help="re-download existing files")
-    p.add_argument("--model-only", action="store_true",
-                   help="skip libLiteRt (not needed when building with -Dtflite=source)")
+    p.add_argument(
+        "--model-only",
+        action="store_true",
+        help="skip libLiteRt (not needed when building with -Dtflite=source)",
+    )
     args = p.parse_args()
     fetch_model(args.force)
     if not args.model_only:

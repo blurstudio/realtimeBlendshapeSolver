@@ -3,8 +3,8 @@
 //
 // Usage: faceBlendshapesTest <tflite library> <face_blendshapes.tflite> <canonical_face_model.obj>
 //
-// MediaPipe's canonical_face_model.obj only has 468 vertices, so the 10 iris
-// landmarks are synthesized from the eye corners.
+// MediaPipe's canonical_face_model.obj only has 468 vertices, so this also
+// covers the no-iris path: fbs::synthesizeIris fills in the 10 iris landmarks.
 
 #include "faceBlendshapes.h"
 #include "tfliteRuntime.h"
@@ -46,17 +46,6 @@ std::vector<V3> readObj(const char *path)
     return v;
 }
 
-void addIris(std::vector<V3> &v, int a, int b)
-{
-    V3 c{(v[a].x + v[b].x) / 2, (v[a].y + v[b].y) / 2, (v[a].z + v[b].z) / 2};
-    const double r = 0.2 * std::hypot(v[a].x - v[b].x, v[a].y - v[b].y);
-    v.push_back(c);
-    v.push_back({c.x + r, c.y, c.z});
-    v.push_back({c.x, c.y + r, c.z});
-    v.push_back({c.x - r, c.y, c.z});
-    v.push_back({c.x, c.y - r, c.z});
-}
-
 int indexOf(const char *name)
 {
     for (int i = 0; i < fbs::kNumBlendshapes; ++i)
@@ -70,10 +59,12 @@ solve(fbs::BlendshapeModel &model, const std::vector<V3> &v, double scale = 1, d
 {
     std::array<float, fbs::kNumSubset * 2> xy{};
     for (int i = 0; i < fbs::kNumSubset; ++i) {
+        if (fbs::kLandmarksSubset[i] >= int(v.size())) continue; // iris, synthesized below
         const V3 &p = v[fbs::kLandmarksSubset[i]];
         xy[2 * i] = float(p.x * scale + offset);
         xy[2 * i + 1] = float(-p.y * scale + offset);
     }
+    if (v.size() == fbs::kNumFaceLandmarks) fbs::synthesizeIris(xy.data());
     std::array<float, fbs::kNumBlendshapes> s{};
     std::string err;
     if (!model.run(xy.data(), s.data(), err)) std::printf("run failed: %s\n", err.c_str());
@@ -109,13 +100,9 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    std::vector<V3> v = readObj(argv[3]);
-    if (v.size() == 468) {
-        addIris(v, 33, 133);  // subject's right eye -> 468..472
-        addIris(v, 362, 263); // subject's left eye  -> 473..477
-    }
-    check(v.size() == fbs::kNumLandmarks, "mesh has 478 landmarks");
-    if (v.size() != fbs::kNumLandmarks) return 1;
+    const std::vector<V3> v = readObj(argv[3]);
+    check(v.size() == fbs::kNumFaceLandmarks, "mesh has 468 landmarks (no iris)");
+    if (v.size() != fbs::kNumFaceLandmarks) return 1;
 
     const auto base = solve(model, v);
     bool inRange = true;
@@ -128,11 +115,18 @@ int main(int argc, char **argv)
         maxDiff = std::fmax(maxDiff, std::fabs(base[i] - moved[i]));
     check(maxDiff < 1e-4, "scale and translation do not change the result");
 
+    double maxLook = 0;
+    for (int i = 0; i < fbs::kNumBlendshapes; ++i)
+        if (std::string(fbs::kBlendshapeNames[i]).rfind("eyeLook", 0) == 0)
+            maxLook = std::fmax(maxLook, base[i]);
+    std::printf("  largest eyeLook* with synthesized irises: %.3f\n", maxLook);
+    check(maxLook < 0.3, "synthesized irises look straight ahead");
+
     const int blinkL = indexOf("eyeBlinkLeft"), blinkR = indexOf("eyeBlinkRight");
     const std::vector<int> leftEye = {263, 249, 390, 373, 374, 380, 381, 382, 362, 466, 388,
-                                      387, 386, 385, 384, 398, 473, 474, 475, 476, 477};
+                                      387, 386, 385, 384, 398};
     const std::vector<int> rightEye = {33,  7,   163, 144, 145, 153, 154, 155, 133, 246, 161,
-                                       160, 159, 158, 157, 173, 468, 469, 470, 471, 472};
+                                       160, 159, 158, 157, 173};
     const auto closedL = solve(model, squashEye(v, leftEye, 263, 362));
     const auto closedR = solve(model, squashEye(v, rightEye, 33, 133));
     std::printf(
