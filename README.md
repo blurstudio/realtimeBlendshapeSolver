@@ -14,9 +14,11 @@ inference takes about 4 ms on one core.
 ## Getting the dependencies
 
 - **The model:** `face_blendshapes.tflite`, about 1 MB, from MediaPipe's
-  `face_landmarker.task` bundle. Run `python -I scripts/fetch_dependencies.py`,
+  `face_landmarker.task` bundle is included in the `resources` folder.
+  If you want to download the latest, run `python -I scripts/fetch_dependencies.py`,
   which puts it in `thirdparty/model/` along with `canonical_face_model.obj`,
-  which the test uses. Nothing it downloads is installed or executed.
+  Nothing it downloads is installed or executed. You can copy it to the resources
+  folder if you want to use it in a build.
 - **Eigen:** header-only. Meson uses a system Eigen if it finds one. Otherwise
   it downloads it through [subprojects/eigen.wrap](subprojects/eigen.wrap) the
   first time you run `meson setup`.
@@ -37,12 +39,12 @@ Run `quick_compile.bat`, or:
 ```
 meson setup build -Dmaya:maya_version=2026 --vsenv
 meson compile -C build
-meson install -C build
+meson install --skip-subprojects -C build
 meson test -C build   # standalone model test, no Maya needed
 ```
 
 `meson install` copies the plugin into `output_Maya<version>/`. It also copies
-the model, if it's present in `thirdparty/`, next to the plugin.
+the model, if it's present in `resources/`, next to the plugin.
 
 ## Runtime lookup
 

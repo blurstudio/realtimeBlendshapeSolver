@@ -55,8 +55,8 @@ outlib = shared_library(
 
 # Runtime files are installed next to the plugin, which is where it looks for
 # them by default.
-model_file = 'thirdparty/model/face_blendshapes.tflite'
-obj_file = 'thirdparty/model/canonical_face_model.obj'
+model_file = 'resources/face_blendshapes.tflite'
+obj_file = 'resources/canonical_face_model.obj'
 
 if fs.is_file(model_file)
   install_data(model_file, install_dir : install_dir)
