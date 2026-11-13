@@ -24,6 +24,7 @@ const char *TfliteArkitSolverNode::typeName = "tfliteArkitSolver";
 MString TfliteArkitSolverNode::s_pluginDir;
 
 MObject TfliteArkitSolverNode::aInMesh;
+MObject TfliteArkitSolverNode::aInIrisMesh;
 MObject TfliteArkitSolverNode::aModelPath;
 MObject TfliteArkitSolverNode::aInputSpace;
 MObject TfliteArkitSolverNode::aInputMatrix;
@@ -62,6 +63,9 @@ MStatus TfliteArkitSolverNode::initialize()
     // ------------------------------------------------------------------ Inputs
 
     aInMesh = tAttr.create("inMesh", "im", MFnData::kMesh);
+    tAttr.setStorable(false);
+
+    aInIrisMesh = tAttr.create("inIrisMesh", "ii", MFnData::kMesh);
     tAttr.setStorable(false);
 
     // Empty means "face_blendshapes.tflite next to the plugin".
@@ -105,7 +109,8 @@ MStatus TfliteArkitSolverNode::initialize()
     s_outputs = {aValid};
     for (int i = 0; i < fbs::kNumBlendshapes; ++i) {
         MString longName(fbs::kBlendshapeNames[i]);
-        if (i == 0) longName = "neutral"; // "_neutral" is not a friendly plug name
+        if (i == 0)
+            longName = "neutral"; // "_neutral" is not a friendly plug name
         char shortName[8];
         std::snprintf(shortName, sizeof(shortName), "bs%02d", i);
         aBlendshapes[i] = nAttr.create(longName, shortName, MFnNumericData::kDouble, 0.0);
@@ -115,7 +120,7 @@ MStatus TfliteArkitSolverNode::initialize()
     }
 
     const MObject inputs[] = {
-        aInMesh, aModelPath, aInputSpace, aInputMatrix, aLandmarkScale, aSwapLeftRight,
+        aInMesh, aInIrisMesh, aModelPath, aInputSpace, aInputMatrix, aLandmarkScale, aSwapLeftRight,
     };
 
     MStatus status;
@@ -138,15 +143,18 @@ MStatus TfliteArkitSolverNode::initialize()
 
 void TfliteArkitSolverNode::reportOnce(const std::string &msg)
 {
-    if (msg == m_lastReported) return;
+    if (msg == m_lastReported)
+        return;
     m_lastReported = msg;
     MGlobal::displayError(MString(typeName) + ": " + msg.c_str());
 }
 
 bool TfliteArkitSolverNode::ensureModel(const std::string &path)
 {
-    if (m_model.isLoaded() && m_model.path() == path) return true;
-    if (path == m_failedPath) return false;
+    if (m_model.isLoaded() && m_model.path() == path)
+        return true;
+    if (path == m_failedPath)
+        return false;
 
     std::string err;
     if (m_model.load(path, err)) {
@@ -198,6 +206,8 @@ MStatus TfliteArkitSolverNode::compute(const MPlug &plug, MDataBlock &data)
     bool valid = false;
 
     MObject meshObj = data.inputValue(aInMesh).asMesh();
+    MObject irisObj = data.inputValue(aInIrisMesh).asMesh();
+
     if (!meshObj.isNull()) {
         MStatus status;
         MFnMesh fnMesh(meshObj, &status);
@@ -216,29 +226,69 @@ MStatus TfliteArkitSolverNode::compute(const MPlug &plug, MDataBlock &data)
         }
         else if (ensureModel(modelPath)) {
             for (int i = 0; i < fbs::kNumSubset; ++i) {
-                if (fbs::kLandmarksSubset[i] >= numVerts) continue; // iris, synthesized below
+                if (fbs::kLandmarksSubset[i] >= numVerts)
+                    continue; // iris, synthesized below
                 const float *p = pts + 3 * fbs::kLandmarksSubset[i];
                 double x = p[0], y = p[1];
                 if (!identity) {
                     MPoint q = MPoint(p[0], p[1], p[2]) * mat;
-                    if (q.w != 0.0 && q.w != 1.0) q.cartesianize();
+                    if (q.w != 0.0 && q.w != 1.0) {
+                        q.cartesianize();
+                    }
                     x = q.x;
                     y = q.y;
                 }
                 xy[2 * i] = static_cast<float>(x * sx);
                 xy[2 * i + 1] = static_cast<float>(y * sy);
             }
-            if (numVerts == fbs::kNumFaceLandmarks) fbs::synthesizeIris(xy.data());
+            if (numVerts == fbs::kNumFaceLandmarks) {
+
+                bool gotirismesh = false;
+                if (!irisObj.isNull()) {
+                    MFnMesh fnIMesh(irisObj, &status);
+                    const int numIVerts = status ? fnIMesh.numVertices() : 0;
+                    const float *ipts = status ? fnIMesh.getRawPoints(&status) : nullptr;
+
+                    if (status && ipts != nullptr && numIVerts >= 10) {
+                        gotirismesh = true;
+                        for (int i = fbs::kNumFaceLandmarks; i < fbs::kNumLandmarks; ++i) {
+                            const float *p = ipts + 3 * (i - fbs::kNumFaceLandmarks);
+                            double x = p[0], y = p[1];
+                            if (!identity) {
+                                MPoint q = MPoint(p[0], p[1], p[2]) * mat;
+                                if (q.w != 0.0 && q.w != 1.0) {
+                                    q.cartesianize();
+                                }
+                                x = q.x;
+                                y = q.y;
+                            }
+                            // xy is in kLandmarksSubset order; 468-477 are its last 10 entries.
+                            const int s = fbs::kNumSubset - fbs::kNumLandmarks + i;
+                            xy[2 * s] = static_cast<float>(x * sx);
+                            xy[2 * s + 1] = static_cast<float>(y * sy);
+                        }
+                    }
+                }
+
+                if (!gotirismesh) {
+                    fbs::synthesizeIris(xy.data());
+                }
+
+            }
             std::string err;
             valid = m_model.run(xy.data(), scores.data(), err);
-            if (!valid) reportOnce(err);
+            if (!valid)
+                reportOnce(err);
         }
     }
-    if (!valid) scores.fill(0.0f);
+    if (!valid) {
+        scores.fill(0.0f);
+    }
     if (valid && swapLeftRight) {
         for (int i = 0; i < fbs::kNumBlendshapes; ++i) {
             const int j = fbs::kMirroredBlendshape[i];
-            if (j > i) std::swap(scores[i], scores[j]);
+            if (j > i)
+                std::swap(scores[i], scores[j]);
         }
     }
 

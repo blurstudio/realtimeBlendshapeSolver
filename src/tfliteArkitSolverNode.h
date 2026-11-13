@@ -32,6 +32,7 @@ class TfliteArkitSolverNode : public MPxNode {
 
     // ---- Inputs
     static MObject aInMesh;
+    static MObject aInIrisMesh;
     static MObject aModelPath;
     static MObject aInputSpace;
     static MObject aInputMatrix;
