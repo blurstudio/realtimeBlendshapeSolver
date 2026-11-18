@@ -1,6 +1,6 @@
-# MayaTfLiteArkitSolver
+# realtimeBlendshapeSolver
 
-A Maya node, `tfliteArkitSolver`, that turns a MediaPipe face mesh (for example
+A Maya node, `realtimeBlendshapeSolver`, that turns a MediaPipe face mesh (for example
 an Alembic or geometry cache) into the 52 ARKit-style blendshape weights. It
 runs MediaPipe's `face_blendshapes.tflite` model.
 
@@ -51,7 +51,7 @@ the model, if it's present in `resources/`, next to the plugin.
 The model comes from the `modelPath` attribute. If it's empty, the node uses
 `face_blendshapes.tflite` in the plugin's folder.
 
-## Node: `tfliteArkitSolver`
+## Node: `realtimeBlendshapeSolver`
 
 ### Inputs
 
