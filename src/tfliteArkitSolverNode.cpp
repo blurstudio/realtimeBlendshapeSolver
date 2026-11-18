@@ -16,10 +16,8 @@
 #include <cstdio>
 #include <utility>
 
-// NOTE: 0x00000 - 0x7ffff is Autodesk's range for local/internal plugins.
-// Replace with an ID from your studio's registered block before distribution.
-const MTypeId TfliteArkitSolverNode::id(0x0007F0A2);
-const char *TfliteArkitSolverNode::typeName = "tfliteArkitSolver";
+const MTypeId TfliteArkitSolverNode::id(0x00122718);
+const char *TfliteArkitSolverNode::typeName = "realtimeBlendshapeSolver";
 
 MString TfliteArkitSolverNode::s_pluginDir;
 

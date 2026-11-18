@@ -1,5 +1,5 @@
 project(
-  'MayaTfLiteArkitSolver', 'cpp',
+  'realtimeBlendshapeSolver', 'cpp',
   # b_vscrt=md: Maya uses the release CRT, so the plugin does too, even in a
   # debug build.
   default_options : ['cpp_std=c++17', 'b_vscrt=md'],
